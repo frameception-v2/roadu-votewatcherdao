@@ -1,6 +1,6 @@
-export const PROJECT_ID = 'votewatcherdao';
+export const PROJECT_ID = "VoteWatcherDAO";
 export const PROJECT_TITLE = "VoteWatcherDAO";
-export const PROJECT_DESCRIPTION = "Track DAO votes and get notified when you can participate";
+export const PROJECT_DESCRIPTION = "Your decentralized governance companion - Track DAO votes, receive notifications, and never miss a governance opportunity";
 
 // DAO Configuration
 export const SUPPORTED_DAOS = [
