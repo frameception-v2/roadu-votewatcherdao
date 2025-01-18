@@ -7,7 +7,6 @@ import sdk, {
   type Context,
 } from "@farcaster/frame-sdk";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "~/components/ui/card";
-
 import { config } from "~/components/providers/WagmiProvider";
 import { PurpleButton } from "~/components/ui/PurpleButton";
 import { truncateAddress } from "~/lib/truncateAddress";
@@ -16,20 +15,38 @@ import { useSession } from "next-auth/react";
 import { createStore } from "mipd";
 import { Label } from "~/components/ui/label";
 import { PROJECT_TITLE } from "~/lib/constants";
+import { useAccount } from "wagmi";
+import { useEffect, useState } from "react";
+import { getVotingPower, getActiveProposals, checkVoteEligibility } from "~/lib/dao";
 
-function ExampleCard() {
+function VoteCard({ proposal, votingPower, isEligible }: { 
+  proposal: any,
+  votingPower: number,
+  isEligible: boolean 
+}) {
   return (
-    <Card className="border-neutral-200 bg-white">
+    <Card className="border-neutral-200 bg-white mb-4">
       <CardHeader>
-        <CardTitle className="text-neutral-900">Welcome to the Frame Template</CardTitle>
+        <CardTitle className="text-neutral-900">{proposal.title}</CardTitle>
         <CardDescription className="text-neutral-600">
-          This is an example card that you can customize or remove
+          Ends: {new Date(proposal.endDate).toLocaleDateString()}
         </CardDescription>
       </CardHeader>
       <CardContent className="text-neutral-800">
-        <p>
-          Your frame content goes here. The text is intentionally dark to ensure good readability.
-        </p>
+        <div className="space-y-2">
+          <p>Your Voting Power: {votingPower}</p>
+          <p>Status: {isEligible ? (
+            <span className="text-green-600">Eligible to vote</span>
+          ) : (
+            <span className="text-red-600">Not eligible</span>
+          )}</p>
+          <PurpleButton 
+            onClick={() => window.open(proposal.link, '_blank')}
+            disabled={!isEligible}
+          >
+            View Proposal
+          </PurpleButton>
+        </div>
       </CardContent>
     </Card>
   );
@@ -40,10 +57,14 @@ export default function Frame(
 ) {
   const [isSDKLoaded, setIsSDKLoaded] = useState(false);
   const [context, setContext] = useState<Context.FrameContext>();
-
   const [added, setAdded] = useState(false);
-
   const [addFrameResult, setAddFrameResult] = useState("");
+  
+  // DAO Voting State
+  const { address } = useAccount();
+  const [votingPower, setVotingPower] = useState(0);
+  const [proposals, setProposals] = useState<any[]>([]);
+  const [eligibility, setEligibility] = useState<boolean[]>([]);
 
   const addFrame = useCallback(async () => {
     try {
@@ -70,6 +91,33 @@ export default function Frame(
 
       setContext(context);
       setAdded(context.client.added);
+
+      // Load DAO data if wallet is connected
+      if (address) {
+        try {
+          const power = await getVotingPower(address);
+          setVotingPower(power);
+          
+          const activeProposals = await getActiveProposals();
+          setProposals(activeProposals);
+          
+          const eligibilityChecks = await Promise.all(
+            activeProposals.map(p => checkVoteEligibility(address, p.id))
+          );
+          setEligibility(eligibilityChecks);
+          
+          // Notify user if eligible for any votes
+          if (eligibilityChecks.some(e => e)) {
+            sdk.actions.notify({
+              title: "Vote Alert",
+              body: "You're eligible to vote on active proposals!",
+              icon: "https://votewatcherdao.xyz/icon.png"
+            });
+          }
+        } catch (error) {
+          console.error("Error loading DAO data:", error);
+        }
+      }
 
       // If frame isn't already added, prompt user to add it
       if (!context.client.added) {
@@ -137,7 +185,38 @@ export default function Frame(
     >
       <div className="w-[300px] mx-auto py-2 px-2">
         <h1 className="text-2xl font-bold text-center mb-4 text-neutral-900">{title}</h1>
-        <ExampleCard />
+        
+        {address ? (
+          <>
+            <div className="mb-4">
+              <Label>Your Voting Power</Label>
+              <div className="text-xl font-bold">{votingPower}</div>
+            </div>
+            
+            {proposals.length > 0 ? (
+              proposals.map((proposal, index) => (
+                <VoteCard
+                  key={proposal.id}
+                  proposal={proposal}
+                  votingPower={votingPower}
+                  isEligible={eligibility[index]}
+                />
+              ))
+            ) : (
+              <Card className="border-neutral-200 bg-white">
+                <CardContent className="p-4 text-neutral-800">
+                  No active proposals at this time
+                </CardContent>
+              </Card>
+            )}
+          </>
+        ) : (
+          <Card className="border-neutral-200 bg-white">
+            <CardContent className="p-4 text-neutral-800">
+              Connect your wallet to view voting information
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );
